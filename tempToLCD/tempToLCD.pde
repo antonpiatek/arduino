@@ -20,6 +20,8 @@ void setup() {
   // setup LCD
   Wire.begin();
 
+  //give display a second to startup before doing initial setup for it
+  delay(1000);
   Wire.beginTransmission(LCD);
   //clear display
   Wire.send(254);
@@ -68,13 +70,8 @@ void printTemp_large() {
 
   Wire.beginTransmission(LCD);
   enableBigDigits();
-  if( temp < 10 ){
-     bigDigit(7, 0);
-     bigDigit(11, temp);
-   } else {
-     bigDigit(7, (temp / 10));
-     bigDigit(11, (temp % 10));
-   }
+  bigDigit(7, (temp / 10));
+  bigDigit(11, (temp % 10));
   moveCursorTo(14,0);
   Wire.send(0xDF); // deg symbol (ish)
   Wire.send("C");
