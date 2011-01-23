@@ -69,6 +69,11 @@ void printTemp_large() {
   int temp = (int) sensors.getTempCByIndex(0);
 
   Wire.beginTransmission(LCD);
+  if( temp < 0 )
+  {
+    moveCursorTo(5,2);
+    Wire.send("_"); // set negative sign
+  }
   enableBigDigits();
   bigDigit(7, (temp / 10));
   bigDigit(11, (temp % 10));
