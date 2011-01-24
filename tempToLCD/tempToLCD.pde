@@ -69,11 +69,18 @@ void printTemp_large() {
   int temp = (int) sensors.getTempCByIndex(0);
 
   Wire.beginTransmission(LCD);
+
+  // set negative sign as required
+  moveCursorTo(5,2);
   if( temp < 0 )
   {
-    moveCursorTo(5,2);
-    Wire.send("_"); // set negative sign
+    Wire.send("_");
   }
+  else
+  {
+    Wire.send(" ");
+  }
+
   enableBigDigits();
   bigDigit(7, (temp / 10));
   bigDigit(11, (temp % 10));
@@ -88,10 +95,10 @@ void printTemp_large() {
 // Write a big Big digit (call enableBigDigits() first)
 // params: column, digit
 void bigDigit(int col, int digit){
- Wire.send(254);
- Wire.send(35);
- Wire.send(col);
- Wire.send(digit);
+  Wire.send(254);
+  Wire.send(35);
+  Wire.send(col);
+  Wire.send(digit);
 }
 
 
