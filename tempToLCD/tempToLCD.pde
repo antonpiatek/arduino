@@ -6,7 +6,7 @@
 //0x5C lcd address converted from 8bit to 7bit
 #define LCD (0x2E)
 
-#define _DEBUG 1
+#define _DEBUG 0
 
 // Data wire is plugged into pin 2 on the Arduino (can be any digital I/O pin)
 #define ONE_WIRE_BUS 2
@@ -19,17 +19,16 @@ DallasTemperature sensors(&oneWire);
 
 int numberOfTemperatureSensors;
 
-const int knownSensorCount = 3;
-char* knownSensorAddresses[] = { "28CE85BB020000C1","28E6EFBA020000F5","28EF7FBB0200005B" };
-char* knownSensorNames[] = { "Bedroom ","LivingRm","Outside "};
+const int knownSensorCount = 4;
+char* knownSensorAddresses[] = { "28CE85BB020000C1","28E6EFBA020000F5","28EF7FBB0200005B","28AB6EBB02000043" };
+char* knownSensorNames[] = { "Bedroom ","LivingRm","Outside ","Spare Rm"};
 
-int actualToExpected[ knownSensorCount ];
-
-int lastTemp = 0;
-
-boolean resetDisplay = false;
+int * actualToExpected;
 
 void setup() {
+  // start serial port
+  Serial.begin(9600);
+
   // setup LCD
   Wire.begin();
 
@@ -46,23 +45,13 @@ void setup() {
   // setup 1-wire temp sensors
   sensors.begin();
 
-  // start serial port
-  Serial.begin(9600);
-
-  delay(500); //wait a bit
+  Serial.println("initialised...");
 
   checkKnownSensors();
-  Serial.println("initialised...");
 }
 
 
 void loop() {
-  if( resetDisplay) 
-  {
-    Wire.beginTransmission(LCD);
-    clearLCD();
-    Wire.endTransmission();
-  }
   //printTemp_simple();
   
   sensors.requestTemperatures(); // Send the command to get temperatures
@@ -71,43 +60,30 @@ void loop() {
     DeviceAddress device;
     if(sensors.getAddress(device, i))
     {  
+      char name[9];
+      getSensorName(i,name);
+      
+      Serial.print( name );
+      Serial.print(": ");
+
       float temp = sensors.getTempCByIndex(i);
       
       Wire.beginTransmission(LCD);    
-      //reset display when we move to single digit screen
-      if( (temp < 10 && lastTemp >= 10) ||
-          (temp > -10 && lastTemp < -10 ) )
-      {
-        clearLCD();
-      }
+      clearLCD();
       
-      moveCursorTo(0,0);
-      if( actualToExpected[i] != -1 )
-      {        
-        char* name =  knownSensorNames[ actualToExpected[i] ] ;
-        //TODO: pad out string
-        Wire.send( name );
-        Serial.print( name );
-        Serial.print(": ");
-      }
-      else
-      {
-        Wire.send( "unknown" );
-        Serial.print("unkown: ");
-      }
+      int line = (i % 4)+1;
+      moveCursorTo(0,line);
+      Wire.send( name );
       Wire.endTransmission();
-      
    
-      if( temp < -60 )
+      if( temp < -60 || temp >= 100 )
       {
         Wire.beginTransmission(LCD);
         Wire.send( "invalid reading: " );
         Wire.endTransmission();  
-        resetDisplay = true;
       }
       else
       {
-        resetDisplay = false;
         printTemp_large(temp);
         Serial.println(temp);
       }
@@ -115,6 +91,8 @@ void loop() {
     }
   }
 }
+
+
 
 /*
 // Print simple
@@ -187,8 +165,6 @@ void printTemp_large(float floatTemp)
   Wire.send(decimalPlace);
 
   Wire.endTransmission();
-  
-  lastTemp = temp;
 }
 
 
@@ -231,27 +207,16 @@ void clearLCD()
 
 
 // function to convert a device address
-char* convertAddress(DeviceAddress deviceAddress)
+void convertAddress(DeviceAddress deviceAddress, char* addrAsString)
 {
-  char r[17];
   for (uint8_t i = 0; i < 8; i++)
   {
     char t[3]; //2 charts + \0 to terminate :-o
     sprintf(t , "%2.2X", deviceAddress[i] );//TODO use 
-    r[i*2] = t[0];
-    r[i*2 + 1] = t[1];
-    #ifdef _DEBUG
-      Serial.print(t);
-      Serial.print(" ");
-    #endif
+    addrAsString[i*2] = t[0];
+    addrAsString[i*2 + 1] = t[1];
   }
-  r[16] = '\0'; // don't forget trailing null
-  #ifdef _DEBUG
-    Serial.print(" = '");
-    Serial.print( r );
-    Serial.println("'");
-  #endif
-  return r;
+  addrAsString[16] = '\0'; // don't forget trailing null
 }
 
 
@@ -259,6 +224,14 @@ void checkKnownSensors()
 {
   // Grab a count of devices on the wire
   numberOfTemperatureSensors = sensors.getDeviceCount();
+  //allocate space for our array 
+  actualToExpected = (int *) malloc(  numberOfTemperatureSensors * sizeof(int) ); 
+  if( actualToExpected == 0 )
+  {
+    Serial.print("malloc failed for actualToExpected");
+    while(1){ delay(1); }
+  }
+  
   sensors.requestTemperatures(); // Send the command to get temperatures
 
   if( numberOfTemperatureSensors != knownSensorCount )
@@ -272,7 +245,7 @@ void checkKnownSensors()
     char a[2]; //1 val temp, plus null termination
     itoa(knownSensorCount,a,10);
     Wire.send( a );
-    Wire.send("\nbut found ");b
+    Wire.send("\nbut found ");
     itoa(numberOfTemperatureSensors,a,10);
     Wire.send( a );
     Wire.send("\n");
@@ -298,8 +271,10 @@ void checkKnownSensors()
     // Search the wire for address
     if(sensors.getAddress(tempDeviceAddress, i))
     {
+      Serial.println("Checking Sensor "+String(i));
       boolean found = false;
-      char* converted = convertAddress(tempDeviceAddress);
+      char converted[17];
+      convertAddress(tempDeviceAddress, converted);
       String convString = String(converted);
       
       for(int j=0; j<knownSensorCount; j++)
@@ -309,6 +284,10 @@ void checkKnownSensors()
           actualToExpected[i]=j; // set actual to expected
           Serial.println("found sensor with address "+String( knownSensorAddresses[j] )
             +" which should be "+String(knownSensorNames[j]));
+          #if _DEBUG == 1
+            Serial.println("knownSensor*[" + String(j) + "] = " + String( knownSensorNames[j] ) );
+            Serial.println("actualToExpected["+String(i)+"] = " + String(j));
+          #endif
           found = true;
           break;
         }
@@ -320,6 +299,7 @@ void checkKnownSensors()
         Serial.print(i, DEC);
         Serial.print(" with address " + convString + " reading temperature ");
         Serial.println( sensors.getTempC(tempDeviceAddress) );
+        Serial.println("actualToExpected["+String(i)+"] = -1");
        }
     }
     else //else ghost device - check power,cables, etc
@@ -330,3 +310,24 @@ void checkKnownSensors()
     }
   }
 }
+
+//params:  int device num, char* for storing name
+void getSensorName (int deviceNumber, char* name)
+{
+  if( deviceNumber > numberOfTemperatureSensors )
+  {
+    Serial.println("overran");
+    strcpy( name, "unknown");
+  }
+  else if( actualToExpected[deviceNumber] == -1 )
+  {
+    Serial.println("unknown");
+    strcpy( name, "unknown");
+  }
+  else
+  {
+    strcpy( name, knownSensorNames[ actualToExpected[deviceNumber] ] );
+  }
+}
+
+/* vim: set ai ts=2 sw=2 tw=0 filetype=c: */
