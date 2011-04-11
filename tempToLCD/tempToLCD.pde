@@ -26,6 +26,8 @@ char* knownSensorNames[] = { "Bedroom ","LivingRm","Outside ","Spare Rm"};
 int * actualToExpected;
 
 void setup() {
+  pinMode(13, OUTPUT);     
+    
   // start serial port
   Serial.begin(9600);
 
@@ -53,41 +55,55 @@ void setup() {
 
 void loop() {
   //printTemp_simple();
-  
+    
   sensors.requestTemperatures(); // Send the command to get temperatures
   for( int i=0; i<numberOfTemperatureSensors; i++)
   { 
+    digitalWrite(13,HIGH);
     DeviceAddress device;
+    
     if(sensors.getAddress(device, i))
     {  
-      char name[9];
-      getSensorName(i,name);
-      
-      Serial.print( name );
-      Serial.print(": ");
-
-      float temp = sensors.getTempCByIndex(i);
-      
-      Wire.beginTransmission(LCD);    
-      clearLCD();
-      
-      int line = (i % 4)+1;
-      moveCursorTo(0,line);
-      Wire.send( name );
-      Wire.endTransmission();
-   
-      if( temp < -60 || temp >= 100 )
+      float temp = sensors.getTempC(device);
+      if( NULL == temp)
       {
-        Wire.beginTransmission(LCD);
-        Wire.send( "invalid reading: " );
-        Wire.endTransmission();  
+        Wire.beginTransmission(LCD);    
+        Wire.send( "GOT NULL FOR TEMP READING" );
+        Wire.endTransmission();
+        Serial.println( "GOT NULL FOR TEMP READING" );
       }
-      else
+      else if( 100 > temp > -60)// is there a better way to test we got a temp reading?
       {
-        printTemp_large(temp);
-        Serial.println(temp);
+        char name[9];
+        getSensorName(i,name);
+        
+        Serial.print( name );
+        Serial.print(": ");
+  
+  
+        
+        Wire.beginTransmission(LCD);    
+        clearLCD();
+        
+        int line = (i % 4)+1;
+        moveCursorTo(0,line);
+        Wire.send( name );
+        Wire.endTransmission();
+     
+        if( temp < -60 || temp >= 100 )
+        {
+          Wire.beginTransmission(LCD);
+          Wire.send( "invalid reading: " );
+          Wire.endTransmission();  
+        }
+        else
+        {
+          printTemp_large(temp);
+          Serial.println(temp);
+        }
+        digitalWrite(13,LOW);
+        delay(2000);
       }
-      delay(2000);
     }
   }
 }
